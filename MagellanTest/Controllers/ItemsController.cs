@@ -1,7 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Npgsql;
-using System;
-using System.Data;
 
 namespace MagellanTest.Controllers
 {
@@ -9,60 +7,58 @@ namespace MagellanTest.Controllers
     [Route("[controller]")]
     public class ItemsController : ControllerBase
     {
-        private readonly string connectionString = "Host=localhost;Port=5432;Database=Part;Username=dbuser;Password=pass;";
+        // Postgres connection string
+        private readonly string _connectionString = "Host=localhost;Port=5432;Database=Part;Username=user;Password=password";
 
+        // Endpoint for creating a new entry in item table
+        // returns id
         [HttpPost]
-        [Route("create")]
         public IActionResult CreateItem([FromBody] ItemRequest itemRequest)
         {
-            using (NpgsqlConnection connection = new NpgsqlConnection(connectionString))
+            using (var connection = new NpgsqlConnection(connectionString))
             {
                 connection.Open();
 
-                using (NpgsqlCommand command = new NpgsqlCommand())
+                using (var command = new NpgsqlCommand("INSERT INTO item (item_name, parent_item, cost, req_date) VALUES (@ItemName, @ParentItem, @Cost, @ReqDate) RETURNING id", connection))
                 {
-                    command.Connection = connection;
-                    command.CommandType = CommandType.Text;
-                    command.CommandText = "INSERT INTO item (item_name, parent_item, cost, req_date) VALUES (@itemName, @parentItem, @cost, @reqDate) RETURNING id;";
-                    command.Parameters.AddWithValue("@itemName", itemRequest.ItemName);
-                    command.Parameters.AddWithValue("@parentItem", itemRequest.ParentItem);
-                    command.Parameters.AddWithValue("@cost", itemRequest.Cost);
-                    command.Parameters.AddWithValue("@reqDate", itemRequest.ReqDate);
+                    command.Parameters.AddWithValue("@ItemName", itemRequest.ItemName);
+                    command.Parameters.AddWithValue("@ParentItem", itemRequest.ParentItem);
+                    command.Parameters.AddWithValue("@Cost", itemRequest.Cost);
+                    command.Parameters.AddWithValue("@ReqDate", itemRequest.ReqDate);
 
-                    int newId = Convert.ToInt32(command.ExecuteScalar());
-
-                    return Ok(new { id = newId });
+                    var id = command.ExecuteScalar();
+                    return Ok(new { Id = id });
                 }
             }
         }
 
-        [HttpGet]
-        [Route("{id}")]
+        // Endpoint to query the item table based on id supplied
+        // returns id, item_name, parent_item, cost, req_date
+        [HttpGet("{id}")]
         public IActionResult GetItem(int id)
         {
-            using (NpgsqlConnection connection = new NpgsqlConnection(connectionString))
+            using (var connection = new NpgsqlConnection(connectionString))
             {
                 connection.Open();
 
-                using (NpgsqlCommand command = new NpgsqlCommand())
+                using (var command = new NpgsqlCommand("SELECT * FROM item WHERE id = @Id", connection))
                 {
-                    command.Connection = connection;
-                    command.CommandType = CommandType.Text;
-                    command.CommandText = "SELECT id, item_name, parent_item, cost, req_date FROM item WHERE id = @id;";
-                    command.Parameters.AddWithValue("@id", id);
+                    command.Parameters.AddWithValue("@Id", id);
 
-                    using (NpgsqlDataReader reader = command.ExecuteReader())
+                    using (var reader = command.ExecuteReader())
                     {
                         if (reader.Read())
                         {
-                            return Ok(new
+                            var result = new
                             {
-                                id = reader.GetInt32(0),
-                                item_name = reader.GetString(1),
-                                parent_item = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2),
-                                cost = reader.GetInt32(3),
-                                req_date = reader.GetDateTime(4)
-                            });
+                                Id = reader.GetInt32(0),
+                                ItemName = reader.GetString(1),
+                                ParentItem = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2),
+                                Cost = reader.GetInt32(3),
+                                ReqDate = reader.GetDateTime(4)
+                            };
+
+                            return Ok(result);
                         }
                         else
                         {
@@ -73,27 +69,22 @@ namespace MagellanTest.Controllers
             }
         }
 
-        [HttpGet]
-        [Route("getTotalCost/{itemName}")]
-        public IActionResult GetTotalCost(string itemName)
+        // Endpoint that calls Get_Total_Cost function
+        [HttpGet("totalcost")]
+        public IActionResult GetTotalCost([FromQuery] string itemName)
         {
-            using (NpgsqlConnection connection = new NpgsqlConnection(connectionString))
+            using (var connection = new NpgsqlConnection(connectionString))
             {
                 connection.Open();
 
-                using (NpgsqlCommand command = new NpgsqlCommand())
+                using (var command = new NpgsqlCommand($"SELECT Get_Total_Cost('{itemName}')", connection))
                 {
-                    command.Connection = connection;
-                    command.CommandType = CommandType.Text;
-                    command.CommandText = "SELECT Get_Total_Cost(@itemName);";
-                    command.Parameters.AddWithValue("@itemName", itemName);
-
-                    int? totalCost = command.ExecuteScalar() as int?;
-
-                    return Ok(new { totalCost });
+                    var result = command.ExecuteScalar();
+                    return Ok(result);
                 }
             }
         }
+
     }
 
     public class ItemRequest
